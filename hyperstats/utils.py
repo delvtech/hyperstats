@@ -7,7 +7,7 @@ import eth_abi
 from dotenv import load_dotenv
 from tqdm import tqdm
 
-from constants import (
+from hyperstats.constants import (
     ERC20_ABI,
     HYPERDRIVE_MORPHO_ABI,
     HYPERDRIVE_REGISTRY_ABI,
@@ -15,7 +15,7 @@ from constants import (
     MORPHO_ABI,
     HyperdrivePrefix,
 )
-from web3_utils import (
+from hyperstats.web3_utils import (
     fetch_events_logs_with_retry,
     w3,
 )

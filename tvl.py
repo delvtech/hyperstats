@@ -1,13 +1,13 @@
 # %%
 
-from constants import (
+from hyperstats.constants import (
     ERC20_ABI,
     HYPERDRIVE_MORPHO_ABI,
     HYPERDRIVE_REGISTRY_ABI,
     HYPERDRIVE_REGISTRY_ADDRESS,
 )
-from utils import get_pool_details
-from web3_utils import w3
+from hyperstats.utils import get_pool_details
+from hyperstats.web3_utils import w3
 
 ## Import
 HYPERDRIVE_REGISTRY_CONTRACT = w3.eth.contract(address=w3.to_checksum_address(HYPERDRIVE_REGISTRY_ADDRESS), abi=HYPERDRIVE_REGISTRY_ABI)
