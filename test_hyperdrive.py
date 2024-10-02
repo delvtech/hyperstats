@@ -21,10 +21,10 @@ HYPERDRIVE_REGISTRY_CONTRACT = w3.eth.contract(address=w3.to_checksum_address(HY
 number_of_instances = HYPERDRIVE_REGISTRY_CONTRACT.functions.getNumberOfInstances().call()
 instance_list = HYPERDRIVE_REGISTRY_CONTRACT.functions.getInstancesInRange(0,number_of_instances).call()
 
-pool_to_test = instance_list[3]  # 5 = ezETH, 3 = sUSDe/DAI
+pool_to_test = instance_list[6]  # 5 = ezETH, 3 = sUSDe/DAI
 print(f"=== pool to test: {pool_to_test} ===")
 start_time = time.time()
-pool_users, pool_ids = get_hyperdrive_participants(pool_to_test, cache=True)
+pool_users, pool_ids = get_hyperdrive_participants(pool_to_test, cache=False)
 pool_to_test_contract = w3.eth.contract(address=w3.to_checksum_address(pool_to_test), abi=HYPERDRIVE_MORPHO_ABI)
 config, info, name, vault_shares_balance, lp_rewardable_tvl, short_rewardable_tvl = get_pool_details(pool_to_test_contract, debug=True)
 print(f"=== {name} ===")

@@ -14,15 +14,13 @@ from .constants import (
     HYPERDRIVE_REGISTRY_ADDRESS,
     MORPHO_ABI,
     HyperdrivePrefix,
+    PAGE_SIZE,
 )
 from .web3_utils import (
     fetch_events_logs_with_retry,
     w3,
 )
 
-load_dotenv()
-
-PAGE_SIZE = 1900
 getcontext().prec = 100  # Set precision for Decimal calculations
 
 def get_first_contract_block(contract_address):

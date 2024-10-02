@@ -1,15 +1,13 @@
 import logging
-import os
 import time
 import traceback
 
-from dotenv import load_dotenv
 from web3 import Web3
+
+from hyperstats.constants import ETH_NODE_URL
 
 # pylint: disable=redefined-builtin
 
-load_dotenv()
-ETH_NODE_URL = os.getenv("ETH_NODE_URL")
 # defaults to http://localhost:8545 if you don't set ETH_NODE_URL
 w3 = Web3(Web3.HTTPProvider(ETH_NODE_URL))
 
