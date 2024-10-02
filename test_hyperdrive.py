@@ -6,8 +6,8 @@ import pandas as pd
 
 from constants import (
     HYPERDRIVE_MORPHO_ABI,
-    HYPERDRIVE_REGISTRY,
     HYPERDRIVE_REGISTRY_ABI,
+    HYPERDRIVE_REGISTRY_ADDRESS,
 )
 from utils import (
     get_hyperdrive_participants,
@@ -17,9 +17,9 @@ from utils import (
 from web3_utils import w3
 
 ## Import
-HYPERDRIVE_REGISTRY = w3.eth.contract(address=w3.to_checksum_address(HYPERDRIVE_REGISTRY), abi=HYPERDRIVE_REGISTRY_ABI)
-number_of_instances = HYPERDRIVE_REGISTRY.functions.getNumberOfInstances().call()
-instance_list = HYPERDRIVE_REGISTRY.functions.getInstancesInRange(0,number_of_instances).call()
+HYPERDRIVE_REGISTRY_CONTRACT = w3.eth.contract(address=w3.to_checksum_address(HYPERDRIVE_REGISTRY_ADDRESS), abi=HYPERDRIVE_REGISTRY_ABI)
+number_of_instances = HYPERDRIVE_REGISTRY_CONTRACT.functions.getNumberOfInstances().call()
+instance_list = HYPERDRIVE_REGISTRY_CONTRACT.functions.getInstancesInRange(0,number_of_instances).call()
 
 pool_to_test = instance_list[3]  # 5 = ezETH, 3 = sUSDe/DAI
 print(f"=== pool to test: {pool_to_test} ===")

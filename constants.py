@@ -2,7 +2,7 @@ import json
 from enum import IntEnum
 
 # mainnet
-HYPERDRIVE_REGISTRY = "0xbe082293b646cb619a638d29e8eff7cf2f46aa3a"
+HYPERDRIVE_REGISTRY_ADDRESS = "0xbe082293b646cb619a638d29e8eff7cf2f46aa3a"
 
 HYPERDRIVE_MORPHO_ABI = None
 with open("abi/IHyperdriveMorpho.json", encoding="utf-8") as f:

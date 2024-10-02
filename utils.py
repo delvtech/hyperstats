@@ -10,6 +10,8 @@ from tqdm import tqdm
 from constants import (
     ERC20_ABI,
     HYPERDRIVE_MORPHO_ABI,
+    HYPERDRIVE_REGISTRY_ABI,
+    HYPERDRIVE_REGISTRY_ADDRESS,
     MORPHO_ABI,
     HyperdrivePrefix,
 )
@@ -152,10 +154,9 @@ def get_pool_details(pool_contract, debug: bool = False):
     else:
         base_token_contract = w3.eth.contract(address=config["baseToken"], abi=ERC20_ABI)
         base_token_balance = base_token_contract.functions.balanceOf(pool_contract.address).call()
-    vault_shares_balance = vault_contract_address = vault_contract = None
+    vault_shares_balance = vault_contract_address = vault_contract = vault_shares_contract = None
     if "Morpho" in name:
         vault_contract_address = pool_contract.functions.vault().call()
-        print(f"{vault_contract_address=}")
         vault_contract = w3.eth.contract(address=vault_contract_address, abi=MORPHO_ABI)
         morpho_market_id = w3.keccak(eth_abi.encode(  # type: ignore
             ("address", "address", "address", "address", "uint256"),
@@ -217,7 +218,7 @@ def get_pool_positions(pool_contract, pool_users, pool_ids, lp_rewardable_tvl, s
     # Calculate shares by prefix
     shares_by_prefix = {prefix: sum(position[5] for position in pool_positions if position[2] == prefix) for prefix in range(4)}
 
-    # Correction step
+    # Correction step to fix rounding errors
     combined_prefixes = [(0, 3), (2,)]  # Treat prefixes 0 and 3 together, 2 separately
     for prefixes in combined_prefixes:
         combined_shares = sum(shares_by_prefix[p] for p in prefixes)
@@ -251,3 +252,19 @@ def get_trade_details(asset_id: int) -> tuple[str, int, int]:
     prefix, timestamp = decode_asset_id(asset_id)
     trade_type = HyperdrivePrefix(prefix).name
     return trade_type, prefix, timestamp
+
+def get_tvl() -> str:
+    hyperdrive_registry_contract = w3.eth.contract(address=w3.to_checksum_address(HYPERDRIVE_REGISTRY_ADDRESS), abi=HYPERDRIVE_REGISTRY_ABI)
+    number_of_instances = hyperdrive_registry_contract.functions.getNumberOfInstances().call()
+    instance_list = hyperdrive_registry_contract.functions.getInstancesInRange(0,number_of_instances).call()
+
+    tvl_string = ''
+    for pool_to_test in instance_list:
+        pool_to_test_contract = w3.eth.contract(address=w3.to_checksum_address(pool_to_test), abi=HYPERDRIVE_MORPHO_ABI)
+        config, _, name, vault_shares_balance, _, _ = get_pool_details(pool_to_test_contract)
+        token_contract_address = config['baseToken'] if config['vaultSharesToken'] == "0x0000000000000000000000000000000000000000" else config['vaultSharesToken']
+        token_contract = w3.eth.contract(address=w3.to_checksum_address(token_contract_address), abi=ERC20_ABI)
+        tvl_string_line = f"{name:<58}({pool_to_test[:8]}) {vault_shares_balance:>32} {token_contract.functions.symbol().call():>5}"
+        tvl_string += f"{tvl_string_line}\n"
+
+    return tvl_string
