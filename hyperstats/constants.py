@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 ETH_NODE_URL = os.getenv("ETH_NODE_URL")
-PAGE_SIZE = int(os.getenv("PAGE_SIZE")) or 1900
+PAGE_SIZE = int(os.getenv("PAGE_SIZE") or 1900)
 
 # mainnet
 HYPERDRIVE_REGISTRY_ADDRESS = "0xbe082293b646cb619a638d29e8eff7cf2f46aa3a"
