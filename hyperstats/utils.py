@@ -1,11 +1,10 @@
 import itertools
 import json
 import os
+import time
 from decimal import Decimal, getcontext
 
 import eth_abi
-from dotenv import load_dotenv
-from tqdm import tqdm
 
 from .constants import (
     ERC20_ABI,
@@ -13,8 +12,8 @@ from .constants import (
     HYPERDRIVE_REGISTRY_ABI,
     HYPERDRIVE_REGISTRY_ADDRESS,
     MORPHO_ABI,
-    HyperdrivePrefix,
     PAGE_SIZE,
+    HyperdrivePrefix,
 )
 from .web3_utils import (
     fetch_events_logs_with_retry,
@@ -41,7 +40,7 @@ def get_first_contract_block(contract_address):
     assert earliest_block >= latest_block, f"something fucked up since {earliest_block=} isn't greater than or equal to {latest_block=}"
     return earliest_block
 
-def get_hyperdrive_participants(pool, cache: bool = False):
+def get_hyperdrive_participants(pool, cache: bool = False, debug: bool = False):
     target_block = w3.eth.get_block_number()
     all_users = all_ids = start_block = None
     if cache and os.path.exists(f"cache/hyperdrive_users_{pool}.json"):
@@ -66,27 +65,26 @@ def get_hyperdrive_participants(pool, cache: bool = False):
     assert all_ids is not None, "error: all_ids is None"
     assert start_block is not None, "error: start_block is None"
     contract = w3.eth.contract(address=pool, abi=HYPERDRIVE_MORPHO_ABI)
-    
-    total_blocks_to_process = target_block - start_block
-    with tqdm(total=total_blocks_to_process, desc="Fetching Hyperdrive events", unit="block") as pbar:
-        current_block = start_block
-        while current_block < target_block:
-            to_block = min(current_block + PAGE_SIZE, target_block)
-            transfers = fetch_events_logs_with_retry(
-                label=f"Hyperdrive users {pool}",
-                contract_event=contract.events.TransferSingle(),
-                from_block=current_block,
-                to_block=to_block,
-                delay=0,
-            )
-            assert transfers is not None, "error: transfers is None"
-            for transfer in transfers:
-                all_users.add(transfer["args"]["to"])
-                all_ids.add(transfer["args"]["id"])
-            # Update the progress bar by the number of blocks processed in this iteration
-            blocks_processed = to_block - current_block
-            pbar.update(blocks_processed)
-            current_block = to_block
+    if debug:
+        print("Fetching Hyperdrive events..", end="")
+        start_time = time.time()
+    current_block = start_block
+    while current_block < target_block:
+        to_block = min(current_block + PAGE_SIZE, target_block)
+        transfers = fetch_events_logs_with_retry(
+            label=f"Hyperdrive users {pool}",
+            contract_event=contract.events.TransferSingle(),
+            from_block=current_block,
+            to_block=to_block,
+            delay=0,
+        )
+        assert transfers is not None, "error: transfers is None"
+        for transfer in transfers:
+            all_users.add(transfer["args"]["to"])
+            all_ids.add(transfer["args"]["id"])
+        current_block = to_block
+    if debug:
+        print(f". done in {time.time() - start_time:0.2f}s")
     if cache:
         with open(f"cache/hyperdrive_users_{pool}.json", "w", encoding="utf-8") as f:
             json.dump(list(all_users), f)
@@ -124,7 +122,7 @@ def decode_asset_id(asset_id: int) -> tuple[int, int]:
     timestamp = asset_id & prefix_mask  # apply the prefix mask
     return prefix, timestamp
 
-def get_pool_details(pool_contract, debug: bool = False):
+def get_pool_details(pool_contract, debug: bool = False, block_number: int | None = None):
     name = pool_contract.functions.name().call()
     config_values = pool_contract.functions.getPoolConfig().call()
     config_outputs = pool_contract.functions.getPoolConfig().abi['outputs'][0]['components']
@@ -134,7 +132,7 @@ def get_pool_details(pool_contract, debug: bool = False):
         print(f"POOL {pool_contract.address[:8]} ({name}) CONFIG:")
         for k,i in config.items():
             print(f" {k:<31} = {i}")
-    info_values = pool_contract.functions.getPoolInfo().call(block_identifier=20684260)
+    info_values = pool_contract.functions.getPoolInfo().call(block_identifier=block_number or "latest")
     info_outputs = pool_contract.functions.getPoolInfo().abi['outputs'][0]['components']
     info_keys = [i['name'] for i in info_outputs if 'name' in i]
     info = dict(zip(info_keys, info_values))
@@ -178,9 +176,6 @@ def get_pool_details(pool_contract, debug: bool = False):
         if "Morpho" in name:
             print(f" {'vault_contract':<31} = {vault_contract_address}")
         print(f" {'vault_shares_balance':<31} = {vault_shares_balance}")
-        # if vault_shares_balance:
-        #     vault_shares_balance_minus_shorts = vault_shares_balance - info['shortsOutstanding']
-        #     print(f" {'vault_shares_balance_minus_shorts':<31} = {vault_shares_balance_minus_shorts/1e18 if vault_shares_balance_minus_shorts else vault_shares_balance_minus_shorts}")
         print(f" {'lp_short_positions':<31} = {lp_short_positions}")
         print(f" {'lp_rewardable_tvl':<31} = {lp_rewardable_tvl}")
         print(f" {'short_rewardable_tvl':<31} = {short_rewardable_tvl}")
