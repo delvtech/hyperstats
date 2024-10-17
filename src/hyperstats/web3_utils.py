@@ -23,7 +23,7 @@ def fetch_events_logs_with_retry(
     for attempt in range(retries):
         try:
             if filter is None:
-                return contract_event.get_logs(fromBlock=from_block, toBlock=to_block)
+                return contract_event.get_logs(from_block=from_block, to_block=to_block)
             else:
                 return contract_event.get_logs(filter)
         except Exception as e:

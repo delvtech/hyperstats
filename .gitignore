@@ -73,3 +73,6 @@ dmypy.json
 
 # pycharm
 .idea
+
+# python
+*.egg-info

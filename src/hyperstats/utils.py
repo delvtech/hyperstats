@@ -6,7 +6,7 @@ from decimal import Decimal, getcontext
 
 import eth_abi
 
-from .constants import (
+from hyperstats.constants import (
     ERC20_ABI,
     HYPERDRIVE_MORPHO_ABI,
     HYPERDRIVE_REGISTRY_ABI,
@@ -15,7 +15,7 @@ from .constants import (
     PAGE_SIZE,
     HyperdrivePrefix,
 )
-from .web3_utils import (
+from hyperstats.web3_utils import (
     fetch_events_logs_with_retry,
     w3,
 )
@@ -183,62 +183,64 @@ def get_pool_details(pool_contract, debug: bool = False, block_number: int | Non
     return config, info, name, vault_shares_balance, lp_rewardable_tvl, short_rewardable_tvl
 
 def get_pool_positions(pool_contract, pool_users, pool_ids, lp_rewardable_tvl, short_rewardable_tvl, debug: bool = False):
-    # sourcery skip: extract-method
     pool_positions = []
-    rewardable_by_prefix = {
-        0: Decimal(lp_rewardable_tvl),  # LPs and Withdrawal Shares get a share of the LP rewardable TVL
-        1: Decimal(0),  # longs get nothing since they have no exposure to the variable rate
-        2: Decimal(short_rewardable_tvl),  # shorts get a share of the Short rewardable TVL
-        3: Decimal(lp_rewardable_tvl),  # withdrawal shares get rewarded the same as LPs
-    }
+    combined_prefixes = [(0, 3), (2,)]  # Treat prefixes 0 and 3 together, 2 separately
     bal_by_prefix = {0: Decimal(0), 1: Decimal(0), 2: Decimal(0), 3: Decimal(0)}
-    shares_by_prefix = {0: Decimal(0), 1: Decimal(0), 2: Decimal(0), 3: Decimal(0)}
-    for user,id in itertools.product(pool_users, pool_ids):
+
+    # First pass: collect balances
+    for user, id in itertools.product(pool_users, pool_ids):
         trade_type, prefix, timestamp = get_trade_details(int(id))
-        bal = pool_contract.functions.balanceOf(int(id),user).call()
+        bal = pool_contract.functions.balanceOf(int(id), user).call()
         if bal > Decimal(1):
             if debug:
                 print(f"user={user[:8]} {trade_type:<4}({prefix=}) {timestamp=:>12} balance={bal:>32}")
             pool_positions.append([user, trade_type, prefix, timestamp, bal, Decimal(0)])
             bal_by_prefix[prefix] += bal
+    # manually hard-code a withdrawal share position
+    # bal = 24101344855221864785272839529
+    # pool_positions.append(["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", "WITHDRAWAL_SHARE", 3, 1678908800, bal, Decimal(0)])
+    # bal_by_prefix[3] += bal
+
+    # Second pass: calculate shares (prefix 1 (longs) get nothing, so we skip it)
     for position in pool_positions:
         prefix = position[2]
-        if bal_by_prefix[prefix] != Decimal(0):
-            # calculate their share of of total balances by prefix
-            share_of_rewardable = position[4] / bal_by_prefix[prefix]
-            position[5] = (rewardable_by_prefix[prefix] * share_of_rewardable).quantize(Decimal('0'))
-
-    # Calculate shares by prefix
-    shares_by_prefix = {prefix: sum(position[5] for position in pool_positions if position[2] == prefix) for prefix in range(4)}
+        if prefix in [0, 3]:  # assign rewards for LPs and withdrawal shares
+            combined_lp_balance = bal_by_prefix[0] + bal_by_prefix[3]  # combine LP and withdrawal share balance
+            if combined_lp_balance != Decimal(0):
+                share_of_rewardable = position[4] / combined_lp_balance
+                position[5] = (lp_rewardable_tvl * share_of_rewardable).quantize(Decimal('0'))
+        elif prefix == 2:  # assign rewards for shorts
+            if bal_by_prefix[2] != Decimal(0):
+                share_of_rewardable = position[4] / bal_by_prefix[2]
+                position[5] = (short_rewardable_tvl * share_of_rewardable).quantize(Decimal('0'))
 
     # Correction step to fix rounding errors
-    combined_prefixes = [(0, 3), (2,)]  # Treat prefixes 0 and 3 together, 2 separately
     for prefixes in combined_prefixes:
-        combined_shares = sum(shares_by_prefix[p] for p in prefixes)
-        combined_rewardable = rewardable_by_prefix[prefixes[0]]  # take rewardable_by_prefix of first prefix
-        print(f"{prefixes=}")
-        print(f"{combined_shares=}")
-        print(f"{combined_rewardable=}")
+        combined_shares = sum(position[5] for position in pool_positions if position[2] in prefixes)
+        combined_rewardable = lp_rewardable_tvl if prefixes[0] == 0 else short_rewardable_tvl
+        if debug:
+            print(f"{prefixes=}")
+            print(f"{combined_shares=}")
+            print(f"{combined_rewardable=}")
         if combined_shares != combined_rewardable:
             diff = combined_rewardable - combined_shares
             # Find the position with the largest share among the combined prefixes
             max_position = max((p for p in pool_positions if p[2] in prefixes), key=lambda x: x[5])
-            print(f"found {diff=} in {prefixes=}, adjusting\n{max_position=}")
+            if debug:
+                print(f"found {diff=} in {prefixes=}, adjusting\n{max_position=}")
             max_position[5] += diff
-            print(f"{max_position=}")
+            if debug:
+                print(f"{max_position=}")
 
-    # Re-calculate shares by prefix
-    shares_by_prefix = {prefix: sum(position[5] for position in pool_positions if position[2] == prefix) for prefix in range(4)}
-
-    # combine LPs and withdrawal shares into subtotals to check accuracy
-    subtotals_by_prefix = {0: shares_by_prefix[0] + shares_by_prefix[3], 1: shares_by_prefix[1], 2: shares_by_prefix[2]}
-    # each subtotal (shares_by_prefix) should match the total (rewardable_by_prefix)
-    for prefix,subtotal in subtotals_by_prefix.items():
-        print(f"{prefix=:<3} balance={bal_by_prefix[prefix]:>24} shares={subtotal:>24} rewardable={rewardable_by_prefix[prefix]:>24}")
-        if subtotal == rewardable_by_prefix[prefix]:
-            print(f" check subtotals_by_prefix == rewardable_by_prefix ({subtotal} == {rewardable_by_prefix[prefix]}) ✅")
+    # Make sure rewards add up to rewardable TVL
+    for prefixes in combined_prefixes:
+        combined_shares = sum(position[5] for position in pool_positions if position[2] in prefixes)
+        combined_rewardable = lp_rewardable_tvl if prefixes[0] == 0 else short_rewardable_tvl
+        if combined_shares == combined_rewardable:
+            print(f"for prefixes={prefixes}, check combined_shares == combined_rewardable ({combined_shares} == {combined_rewardable}) ✅")
         else:
-            print(f" check subtotals_by_prefix == rewardable_by_prefix ({subtotal} != {rewardable_by_prefix[prefix]}) ❌")
+            print(f"for prefixes={prefixes}, check combined_shares == combined_rewardable ({combined_shares} != {combined_rewardable}) ❌")
+
     return pool_positions
 
 def get_trade_details(asset_id: int) -> tuple[str, int, int]:
