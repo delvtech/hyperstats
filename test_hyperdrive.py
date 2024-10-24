@@ -33,20 +33,28 @@ pool_positions = get_pool_positions(
     pool_ids=pool_ids,
     lp_rewardable_tvl=lp_rewardable_tvl,
     short_rewardable_tvl=short_rewardable_tvl,
-    debug=True,
 )
 
-# display stuff
+# Make sure rewards add up to rewardable TVL
+combined_prefixes = [(0, 3), (2,)]  # Treat prefixes 0 and 3 together, 2 separately
+for prefixes in combined_prefixes:
+    combined_shares = sum(position[5] for position in pool_positions if position[2] in prefixes)
+    combined_rewardable = lp_rewardable_tvl if prefixes[0] == 0 else short_rewardable_tvl
+    if combined_shares == combined_rewardable:
+        print(f"for prefixes={prefixes}, check combined_shares == combined_rewardable ({combined_shares} == {combined_rewardable}) ✅")
+    else:
+        print(f"for prefixes={prefixes}, check combined_shares == combined_rewardable ({combined_shares} != {combined_rewardable}) ❌")
+
+# test totals
 total_balance = sum(position[4] for position in pool_positions)
 total_rewardable = sum(position[5] for position in pool_positions)
-
 if vault_shares_balance == Decimal(total_rewardable):
     print(f"vault_shares_balance == total_rewardable ({vault_shares_balance} == {total_rewardable}) ✅")
 else:
     print(f"vault_shares_balance != total_rewardable ({vault_shares_balance} != {total_rewardable}) ❌")
 
+# display results by user
 print("User\tType\tPrefix\tTimestamp\tBalance\tRewardable")  # Header
 for position in pool_positions:
-    # print(f"{position[0]}\t{position[1]}\t{position[2]}\t{position[3]}\t{position[4]}\t{position[5]}")
     print('\t'.join(map(str, position)))
 print(f"Total\t\t\t\t{total_balance}\t{total_rewardable}")  # Subtotals

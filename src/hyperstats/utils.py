@@ -182,7 +182,7 @@ def get_pool_details(pool_contract, debug: bool = False, block_number: int | Non
 
     return config, info, name, vault_shares_balance, lp_rewardable_tvl, short_rewardable_tvl
 
-def get_pool_positions(pool_contract, pool_users, pool_ids, lp_rewardable_tvl, short_rewardable_tvl, debug: bool = False):
+def get_pool_positions(pool_contract, pool_users, pool_ids, lp_rewardable_tvl, short_rewardable_tvl, block = None):
     pool_positions = []
     combined_prefixes = [(0, 3), (2,)]  # Treat prefixes 0 and 3 together, 2 separately
     bal_by_prefix = {0: Decimal(0), 1: Decimal(0), 2: Decimal(0), 3: Decimal(0)}
@@ -190,16 +190,10 @@ def get_pool_positions(pool_contract, pool_users, pool_ids, lp_rewardable_tvl, s
     # First pass: collect balances
     for user, id in itertools.product(pool_users, pool_ids):
         trade_type, prefix, timestamp = get_trade_details(int(id))
-        bal = pool_contract.functions.balanceOf(int(id), user).call()
+        bal = pool_contract.functions.balanceOf(int(id), user).call(block_identifier=block or "latest")
         if bal > Decimal(1):
-            if debug:
-                print(f"user={user[:8]} {trade_type:<4}({prefix=}) {timestamp=:>12} balance={bal:>32}")
             pool_positions.append([user, trade_type, prefix, timestamp, bal, Decimal(0)])
             bal_by_prefix[prefix] += bal
-    # manually hard-code a withdrawal share position
-    # bal = 24101344855221864785272839529
-    # pool_positions.append(["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", "WITHDRAWAL_SHARE", 3, 1678908800, bal, Decimal(0)])
-    # bal_by_prefix[3] += bal
 
     # Second pass: calculate shares (prefix 1 (longs) get nothing, so we skip it)
     for position in pool_positions:
@@ -218,28 +212,11 @@ def get_pool_positions(pool_contract, pool_users, pool_ids, lp_rewardable_tvl, s
     for prefixes in combined_prefixes:
         combined_shares = sum(position[5] for position in pool_positions if position[2] in prefixes)
         combined_rewardable = lp_rewardable_tvl if prefixes[0] == 0 else short_rewardable_tvl
-        if debug:
-            print(f"{prefixes=}")
-            print(f"{combined_shares=}")
-            print(f"{combined_rewardable=}")
         if combined_shares != combined_rewardable:
             diff = combined_rewardable - combined_shares
             # Find the position with the largest share among the combined prefixes
             max_position = max((p for p in pool_positions if p[2] in prefixes), key=lambda x: x[5])
-            if debug:
-                print(f"found {diff=} in {prefixes=}, adjusting\n{max_position=}")
             max_position[5] += diff
-            if debug:
-                print(f"{max_position=}")
-
-    # Make sure rewards add up to rewardable TVL
-    for prefixes in combined_prefixes:
-        combined_shares = sum(position[5] for position in pool_positions if position[2] in prefixes)
-        combined_rewardable = lp_rewardable_tvl if prefixes[0] == 0 else short_rewardable_tvl
-        if combined_shares == combined_rewardable:
-            print(f"for prefixes={prefixes}, check combined_shares == combined_rewardable ({combined_shares} == {combined_rewardable}) ✅")
-        else:
-            print(f"for prefixes={prefixes}, check combined_shares == combined_rewardable ({combined_shares} != {combined_rewardable}) ❌")
 
     return pool_positions
 
