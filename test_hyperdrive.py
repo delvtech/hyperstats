@@ -20,7 +20,7 @@ number_of_instances = HYPERDRIVE_REGISTRY_CONTRACT.functions.getNumberOfInstance
 print(f"{number_of_instances=}")
 instance_list = HYPERDRIVE_REGISTRY_CONTRACT.functions.getInstancesInRange(0,number_of_instances).call()
 
-pool_to_test = instance_list[0]  # 5 = ezETH, 3 = sUSDe/DAI, # 6 = eETH, 10 = sUSDS
+pool_to_test = instance_list[11]  # 5 = ezETH, 3 = sUSDe/DAI, # 6 = eETH, 10 = sUSDS, 11 = sUSDe
 print(f"=== pool to test: {pool_to_test} ===")
 start_time = time.time()
 pool_users, pool_ids = get_hyperdrive_participants(pool_to_test, cache=False)

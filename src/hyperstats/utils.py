@@ -84,7 +84,7 @@ def get_hyperdrive_participants(pool, cache: bool = False, debug: bool = False):
             all_ids.add(transfer["args"]["id"])
         current_block = to_block
     if debug:
-        print(f". done in {time.time() - start_time:0.2f}s")
+        print(f". done in {time.time() - start_time:0.2f}s")  # type: ignore
     if cache:
         with open(f"cache/hyperdrive_users_{pool}.json", "w", encoding="utf-8") as f:
             json.dump(list(all_users), f)
@@ -123,6 +123,7 @@ def decode_asset_id(asset_id: int) -> tuple[int, int]:
     return prefix, timestamp
 
 def get_pool_details(pool_contract, debug: bool = False, block_number: int | None = None):
+    block_identifier = block_number or "latest"
     name = pool_contract.functions.name().call()
     config_values = pool_contract.functions.getPoolConfig().call()
     config_outputs = pool_contract.functions.getPoolConfig().abi['outputs'][0]['components']
@@ -132,7 +133,7 @@ def get_pool_details(pool_contract, debug: bool = False, block_number: int | Non
         print(f"POOL {pool_contract.address[:8]} ({name}) CONFIG:")
         for k,i in config.items():
             print(f" {k:<31} = {i}")
-    info_values = pool_contract.functions.getPoolInfo().call(block_identifier=block_number or "latest")
+    info_values = pool_contract.functions.getPoolInfo().call(block_identifier=block_identifier)
     info_outputs = pool_contract.functions.getPoolInfo().abi['outputs'][0]['components']
     info_keys = [i['name'] for i in info_outputs if 'name' in i]
     info = dict(zip(info_keys, info_values))
@@ -149,10 +150,10 @@ def get_pool_details(pool_contract, debug: bool = False, block_number: int | Non
         base_token_balance = w3.eth.get_balance(pool_contract.address)
     else:
         base_token_contract = w3.eth.contract(address=config["baseToken"], abi=ERC20_ABI)
-        base_token_balance = base_token_contract.functions.balanceOf(pool_contract.address).call()
+        base_token_balance = base_token_contract.functions.balanceOf(pool_contract.address).call(block_identifier=block_identifier)
     vault_shares_balance = vault_contract_address = vault_contract = vault_shares_contract = None
     if "Morpho" in name:
-        vault_contract_address = pool_contract.functions.vault().call()
+        vault_contract_address = pool_contract.functions.vault().call(block_identifier=block_identifier)
         vault_contract = w3.eth.contract(address=vault_contract_address, abi=MORPHO_ABI)
         morpho_market_id = w3.keccak(eth_abi.encode(  # type: ignore
             ("address", "address", "address", "address", "uint256"),
@@ -167,7 +168,7 @@ def get_pool_details(pool_contract, debug: bool = False, block_number: int | Non
         vault_shares_balance = vault_contract.functions.position(morpho_market_id,pool_contract.address).call()[0]
     elif config["vaultSharesToken"] != "0x0000000000000000000000000000000000000000":
         vault_shares_contract = w3.eth.contract(address=config["vaultSharesToken"], abi=ERC20_ABI)
-        vault_shares_balance = vault_shares_contract.functions.balanceOf(pool_contract.address).call()
+        vault_shares_balance = vault_shares_contract.functions.balanceOf(pool_contract.address).call(block_identifier=block_identifier)
     short_rewardable_tvl = info['shortsOutstanding']
     lp_rewardable_tvl = vault_shares_balance - short_rewardable_tvl
     if debug:
@@ -188,9 +189,9 @@ def get_pool_positions(pool_contract, pool_users, pool_ids, lp_rewardable_tvl, s
     bal_by_prefix = {0: Decimal(0), 1: Decimal(0), 2: Decimal(0), 3: Decimal(0)}
 
     # First pass: collect balances
-    for user, id in itertools.product(pool_users, pool_ids):
-        trade_type, prefix, timestamp = get_trade_details(int(id))
-        bal = pool_contract.functions.balanceOf(int(id), user).call(block_identifier=block or "latest")
+    for user, custom_id in itertools.product(pool_users, pool_ids):
+        trade_type, prefix, timestamp = get_trade_details(int(custom_id))
+        bal = pool_contract.functions.balanceOf(int(custom_id), user).call(block_identifier=block or "latest")
         if bal > Decimal(1):
             pool_positions.append([user, trade_type, prefix, timestamp, bal, Decimal(0)])
             bal_by_prefix[prefix] += bal
