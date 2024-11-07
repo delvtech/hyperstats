@@ -78,6 +78,6 @@ User                                        Type      Prefix    Timestamp     Ba
 Total                                                                         98518465319106068480       90790332627728876006
 ```
 
-examples of points calculations using this logic:
-ethena: https://github.com/ethena-labs/ethena_sats_adapters/pull/39
-defillama (javascript): https://github.com/DefiLlama/DefiLlama-Adapters/pull/11859
+points calculations using this logic:
+- ethena: https://github.com/ethena-labs/ethena_sats_adapters/pull/39
+- defillama (javascript): https://github.com/DefiLlama/DefiLlama-Adapters/pull/11859
