@@ -53,8 +53,26 @@ if vault_shares_balance == Decimal(total_rewardable):
 else:
     print(f"vault_shares_balance != total_rewardable ({vault_shares_balance} != {total_rewardable}) ❌")
 
-# display results by user
-print("User\tType\tPrefix\tTimestamp\tBalance\tRewardable")  # Header
+# Print results
+# Define column widths
+col_widths = [42, 8, 8, 12, 25, 25]
+
+# Print header
+header = ["User", "Type", "Prefix", "Timestamp", "Balance", "Rewardable"]
+print("  ".join(f"{h:<{w}}" for h, w in zip(header, col_widths)))
+
+# Print data rows
 for position in pool_positions:
-    print('\t'.join(map(str, position)))
-print(f"Total\t\t\t\t{total_balance}\t{total_rewardable}")  # Subtotals
+    row = [
+        position[0],
+        position[1],
+        position[2],
+        position[3],
+        f"{position[4]:.0f}",
+        f"{position[5]:.0f}"
+    ]
+    print("  ".join(f"{str(item):<{w}}" for item, w in zip(row, col_widths)))
+
+# Print total
+total_row = ["Total", "", "", "", f"{total_balance:.0f}", f"{total_rewardable:.0f}"]
+print("  ".join(f"{str(item):<{w}}" for item, w in zip(total_row, col_widths)))
