@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 ALCHEMY_KEY = os.getenv("ALCHEMY_KEY")
-PAGE_SIZE = int(os.getenv("PAGE_SIZE") or 1900)
+PAGE_SIZE = int(os.getenv("PAGE_SIZE") or 1000000)
 
 # mainnet
 HYPERDRIVE_REGISTRY = {

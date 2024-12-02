@@ -376,5 +376,5 @@ def get_instance_list(network, debug=False):
     hyperdrive_registry_contract = w3.eth.contract(address=w3.to_checksum_address(registry_address), abi=HYPERDRIVE_REGISTRY_ABI)
     number_of_instances = hyperdrive_registry_contract.functions.getNumberOfInstances().call()
     if debug:
-        print(f"retrieved {number_of_instances} pools on {network}")
+        print(f"there are {number_of_instances} pools on {network}")
     return w3, hyperdrive_registry_contract.functions.getInstancesInRange(0,number_of_instances).call()
