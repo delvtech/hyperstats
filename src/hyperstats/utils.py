@@ -222,16 +222,17 @@ def get_pool_details(w3, pool_contract, deployment_block: int | None = None, ext
             print(f" {k:<31} = {i}")
     lp_short_positions = info['longExposure']
 
-    # query pool holdings of the base token
-    base_token_balance = None
+    # query pool holdings of base and vault tokens
+    base_token_balance = vault_shares_balance = vault_contract_address = vault_contract = vault_shares_contract = None
     if config["baseToken"] == "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE":
         # the base token is ETH
         base_token_balance = w3.eth.get_balance(pool_contract.address)
-    elif config["baseToken"] != "0x0000000000000000000000000000000000000000":
+    elif " LP " in name:
         base_token_contract = w3.eth.contract(address=config["extraData"], abi=ERC20_ABI)
         base_token_balance = base_token_contract.functions.balanceOf(pool_contract.address).call(block_identifier=block_identifier)
-        print(f"{base_token_balance=}")
-    vault_shares_balance = vault_contract_address = vault_contract = vault_shares_contract = None
+    elif config["baseToken"] != "0x0000000000000000000000000000000000000000":
+        base_token_contract = w3.eth.contract(address=config["baseToken"], abi=ERC20_ABI)
+        base_token_balance = base_token_contract.functions.balanceOf(pool_contract.address).call(block_identifier=block_identifier)
     if "Morpho" in name:
         vault_contract_address = pool_contract.functions.vault().call(block_identifier=block_identifier)
         vault_contract = w3.eth.contract(address=vault_contract_address, abi=MORPHO_ABI)
