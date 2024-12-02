@@ -8,7 +8,6 @@ load_dotenv()
 ALCHEMY_KEY = os.getenv("ALCHEMY_KEY")
 PAGE_SIZE = int(os.getenv("PAGE_SIZE") or 1000000)
 
-# mainnet
 HYPERDRIVE_REGISTRY = {
     "mainnet": "0xbe082293b646cb619a638d29e8eff7cf2f46aa3a",
     "gnosis": "0x666fa9ef9bca174a042c4c306b23ba8ee0c59666",
