@@ -15,7 +15,6 @@ from hyperstats.utils import (
 
 
 def test_instance(w3, pool_to_test):
-    print(f"=== pool to test: {pool_to_test} ===")
     pool_users, pool_ids, deployment_block, extra_data = get_hyperdrive_participants(w3, pool_to_test, cache=False)
     pool_to_test_contract = w3.eth.contract(address=w3.to_checksum_address(pool_to_test), abi=HYPERDRIVE_MORPHO_ABI)
     config, info, name, vault_shares_balance, lp_rewardable_tvl, short_rewardable_tvl = get_pool_details(w3, pool_to_test_contract, deployment_block, extra_data, debug=True)
@@ -49,6 +48,12 @@ def test_instance(w3, pool_to_test):
     else:
         print(f"vault_shares_balance != total_rewardable ({vault_shares_balance} != {total_rewardable}) ❌")
 
+    # ensure total_rewardable is positive
+    if total_rewardable > Decimal(0):
+        print(f"total_rewardable is positive ({total_rewardable}) ✅")
+    else:
+        print(f"total_rewardable is not positive ({total_rewardable}) ❌")
+
     # Print results
     # Define column widths
     col_widths = [42, 8, 8, 12, 25, 25]
@@ -79,7 +84,8 @@ if __name__ == "__main__":
 
     pool = sys.argv[2] if len(sys.argv) > 2 else "all"
     if pool == "all":
-        for pool in instance_list:
+        for idx, pool in enumerate(instance_list):
+            print(f"=== {network} pool {idx:>2}: {pool} ===")
             test_instance(w3, pool)
     else:
         test_instance(w3, instance_list[int(pool)])  # 5 = ezETH, 3 = sUSDe/DAI, # 6 = eETH, 10 = sUSDS, 11 = sUSDe

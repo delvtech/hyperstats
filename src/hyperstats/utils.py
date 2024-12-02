@@ -207,7 +207,7 @@ def get_pool_details(w3, pool_contract, deployment_block: int | None = None, ext
     if extra_data is not None:
         config['extraData'] = extra_data
     if debug:
-        print(f"POOL {pool_contract.address[:8]} ({name}) CONFIG:")
+        print("CONFIG:")
         for k,i in config.items():
             print(f" {k:<31} = {i}")
 
@@ -217,7 +217,7 @@ def get_pool_details(w3, pool_contract, deployment_block: int | None = None, ext
     info_keys = [i['name'] for i in info_outputs if 'name' in i]
     info = dict(zip(info_keys, info_values))
     if debug:
-        print(f"POOL {pool_contract.address[:8]} ({name}) INFO:")
+        print("INFO:")
         for k,i in info.items():
             print(f" {k:<31} = {i}")
     lp_short_positions = info['longExposure']
