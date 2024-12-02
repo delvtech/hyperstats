@@ -77,7 +77,7 @@ if __name__ == "__main__":
     network = sys.argv[1] if len(sys.argv) > 1 else "mainnet"
     w3, instance_list = get_instance_list(network, debug=True)
 
-    pool = sys.argv[2] if len(sys.argv) > 2 else instance_list[-1]
+    pool = sys.argv[2] if len(sys.argv) > 2 else "all"
     if pool == "all":
         for pool in instance_list:
             test_instance(w3, pool)

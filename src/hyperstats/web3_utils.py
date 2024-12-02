@@ -4,10 +4,14 @@ import time
 import traceback
 
 from web3 import Web3
+from web3.middleware import ExtraDataToPOAMiddleware
 
 
 def create_w3(network):
-    return Web3(Web3.HTTPProvider(f"https://{'eth' if network == 'mainnet' else network}-mainnet.g.alchemy.com/v2/{os.getenv('ALCHEMY_KEY')}"))
+    w3 = Web3(Web3.HTTPProvider(f"https://{'eth' if network == 'mainnet' else network}-mainnet.g.alchemy.com/v2/{os.getenv('ALCHEMY_KEY')}"))
+    if network == "linea":
+        w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+    return w3
 
 
 def fetch_events_logs_with_retry(
