@@ -1,15 +1,18 @@
 import logging
+import os
 import time
 import traceback
 
 from web3 import Web3
+from web3.middleware import ExtraDataToPOAMiddleware
 
-from hyperstats.constants import ETH_NODE_URL
 
-# pylint: disable=redefined-builtin
+def create_w3(network):
+    w3 = Web3(Web3.HTTPProvider(f"https://{'eth' if network == 'mainnet' else network}-mainnet.g.alchemy.com/v2/{os.getenv('ALCHEMY_KEY')}"))
+    if network == "linea":
+        w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+    return w3
 
-# defaults to http://localhost:8545 if you don't set ETH_NODE_URL
-w3 = Web3(Web3.HTTPProvider(ETH_NODE_URL))
 
 def fetch_events_logs_with_retry(
     label: str,
