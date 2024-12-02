@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from hyperstats.constants import (
     HYPERDRIVE_MORPHO_ABI,
+    HYPERDRIVE_REGISTRY,
 )
 from hyperstats.utils import (
     calc_apr,
@@ -79,13 +80,17 @@ def test_instance(w3, pool_to_test):
     print("  ".join(f"{str(item):<{w}}" for item, w in zip(total_row, col_widths)))
 
 if __name__ == "__main__":
-    network = sys.argv[1] if len(sys.argv) > 1 else "mainnet"
-    w3, instance_list = get_instance_list(network, debug=True)
-
-    pool = sys.argv[2] if len(sys.argv) > 2 else "all"
-    if pool == "all":
-        for idx, pool in enumerate(instance_list):
-            print(f"=== {network} pool {idx:>2}: {pool} ===")
-            test_instance(w3, pool)
-    else:
-        test_instance(w3, instance_list[int(pool)])  # 5 = ezETH, 3 = sUSDe/DAI, # 6 = eETH, 10 = sUSDS, 11 = sUSDe
+    networks = sys.argv[1] if len(sys.argv) > 1 else "all"
+    if networks == "all":
+        networks = list(HYPERDRIVE_REGISTRY.keys())
+    if not isinstance(networks, list):
+        networks = [networks]
+    for network in networks:
+        w3, instance_list = get_instance_list(network, debug=False)
+        pool = sys.argv[2] if len(sys.argv) > 2 else "all"
+        if pool == "all":
+            for idx, pool in enumerate(instance_list):
+                print(f"=== {network} pool {idx:>2}: {pool} ===")
+                test_instance(w3, pool)
+        else:
+            test_instance(w3, instance_list[int(pool)])  # 5 = ezETH, 3 = sUSDe/DAI, # 6 = eETH, 10 = sUSDS, 11 = sUSDe
