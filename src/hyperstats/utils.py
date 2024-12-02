@@ -5,42 +5,68 @@ import time
 from decimal import Decimal, getcontext
 
 import eth_abi
+from hexbytes import HexBytes
 
 from hyperstats.constants import (
     ERC20_ABI,
+    HYPERDRIVE_FACTORY_ABI,
     HYPERDRIVE_MORPHO_ABI,
+    HYPERDRIVE_REGISTRY,
     HYPERDRIVE_REGISTRY_ABI,
-    HYPERDRIVE_REGISTRY_ADDRESS,
     MORPHO_ABI,
     PAGE_SIZE,
     HyperdrivePrefix,
 )
 from hyperstats.web3_utils import (
+    create_w3,
     fetch_events_logs_with_retry,
-    w3,
 )
 
 getcontext().prec = 100  # Set precision for Decimal calculations
 
-def get_first_contract_block(contract_address):
+def get_first_contract_block(w3, contract_address):
+    """Find the first block where a contract's code exists.
+
+    Args:
+        w3: Web3 instance
+        contract_address: Address of the contract to search for
+
+    Returns:
+        tuple: (deployment_block, deployment_transaction)
+            - deployment_block: Block number where contract was deployed
+            - deployment_transaction: Transaction hash and constructor args
+    """
     # do binary search up to latest block
     latest_block = w3.eth.get_block_number()
     earliest_block = 0
-    while earliest_block < latest_block:
+
+    # Keep track of first block where we find code
+    first_code_block = None
+
+    while earliest_block <= latest_block:
         mid_block = (earliest_block + latest_block) // 2
         attempt_to_get_code = w3.eth.get_code(account=contract_address,block_identifier=mid_block)
-        if attempt_to_get_code == b'':
-            # Contract not yet deployed, continue searching in the later blocks
+
+        if len(attempt_to_get_code) <= 2:  # "0x" or empty
+            # No code at mid_block, deployment must be after
             earliest_block = mid_block + 1
         else:
-            # Contract deployed, continue searching in the earlier blocks
+            # Found code at mid_block, remember it and look earlier
+            first_code_block = mid_block
             latest_block = mid_block - 1
-    # At this point, earliest_block and latest_block should be the same,
-    # and it represents the block where we can first retrieve the contract code.
-    assert earliest_block >= latest_block, f"something fucked up since {earliest_block=} isn't greater than or equal to {latest_block=}"
-    return earliest_block
 
-def get_hyperdrive_participants(pool, cache: bool = False, debug: bool = False):
+    if first_code_block is None:
+        raise ValueError(f"Could not find any block with code for contract {contract_address}")
+
+    # The deployment block is the one we found with code
+    deployment_block = first_code_block
+
+    # Now find the deployment transaction
+    _, extra_data = get_deployment_transaction(w3, contract_address, deployment_block=deployment_block)
+
+    return deployment_block, extra_data
+
+def get_hyperdrive_participants(w3, pool, cache: bool = False, debug: bool = False):
     target_block = w3.eth.get_block_number()
     all_users = all_ids = start_block = None
     if cache and os.path.exists(f"cache/hyperdrive_users_{pool}.json"):
@@ -53,6 +79,7 @@ def get_hyperdrive_participants(pool, cache: bool = False, debug: bool = False):
             all_ids = set(json.load(f))
     else:
         all_ids = set()
+    deployment_block = extra_data = None
     if cache and os.path.exists(f"cache/hyperdrive_latest_block_{pool}.json"):
         with open(f"cache/hyperdrive_latest_block_{pool}.json", "r", encoding="utf-8") as f:
             start_block = json.load(f) + 1
@@ -60,7 +87,8 @@ def get_hyperdrive_participants(pool, cache: bool = False, debug: bool = False):
             print(f"Skipping pool {pool} because it's up to date.")
             return all_users, all_ids
     else:
-        start_block = get_first_contract_block(pool)
+        deployment_block, extra_data = get_first_contract_block(w3, pool)
+        start_block = deployment_block + 1
     assert all_users is not None, "error: all_users is None"
     assert all_ids is not None, "error: all_ids is None"
     assert start_block is not None, "error: start_block is None"
@@ -93,7 +121,48 @@ def get_hyperdrive_participants(pool, cache: bool = False, debug: bool = False):
         with open(f"cache/hyperdrive_latest_block_{pool}.json", "w", encoding="utf-8") as f:
             json.dump(target_block, f)
 
-    return all_users, all_ids
+    return all_users, all_ids, deployment_block, extra_data
+
+def get_deployment_transaction(w3, contract_address, deployment_block=None):
+    """Find the deployment transaction of a smart contract.
+
+    Args:
+        w3: Web3 instance
+        contract_address: Address of the deployed contract (can be checksummed or lowercase)
+        deployment_block: Optional block number where contract was deployed
+        
+    Returns:
+        tuple: (transaction_hash, constructor_args)
+            - transaction_hash: The hash of the deployment transaction
+            - constructor_args: The decoded constructor arguments if available
+    """
+    # First find the block where the contract was deployed
+    if deployment_block is None:
+        deployment_block = get_first_contract_block(w3, contract_address)
+    
+    block = w3.eth.get_block(deployment_block, full_transactions=True)
+    contract_address = contract_address.lower()
+    
+    # Look for the transaction that created the contract
+    for tx in block.transactions:
+        try:
+            receipt = w3.eth.get_transaction_receipt(tx.hash)
+            # Find deployed event in the logs
+            for log in receipt.get('logs', []):
+                topic = log.get('topics', [None])[0]
+                if topic == HexBytes('0xb25b0f0f93209be08152122f1321f6b0ef559a93a67695fff5fea3e5ed234465'):
+                    decoded_event = w3.eth.contract(abi=HYPERDRIVE_FACTORY_ABI).events.Deployed().process_log(log)
+                    extra_data = decoded_event['args']['extraData']
+                    extra_data_decoded = HexBytes(extra_data)
+                    if extra_data_decoded[:12] == HexBytes('0x000000000000000000000000'):
+                        extra_data_decoded = HexBytes(extra_data_decoded[12:])
+                    return tx.hash, extra_data_decoded
+                    
+        except Exception as e:
+            print(f"Error processing transaction {tx.hash}: {e}")
+            continue
+    
+    raise ValueError(f"Could not find deployment transaction for contract {contract_address} in block {deployment_block}")
 
 def decode_asset_id(asset_id: int) -> tuple[int, int]:
     r"""Decode a transaction asset ID into its constituent parts of an identifier, data, and a timestamp.
@@ -122,17 +191,27 @@ def decode_asset_id(asset_id: int) -> tuple[int, int]:
     timestamp = asset_id & prefix_mask  # apply the prefix mask
     return prefix, timestamp
 
-def get_pool_details(pool_contract, debug: bool = False, block_number: int | None = None):
+def get_pool_details(w3, pool_contract, deployment_block: int | None = None, extra_data: str | None = None, debug: bool = False, block_number: int | None = None):
     block_identifier = block_number or "latest"
+
+    # get pool name
     name = pool_contract.functions.name().call()
+
+    # get pool config
     config_values = pool_contract.functions.getPoolConfig().call()
     config_outputs = pool_contract.functions.getPoolConfig().abi['outputs'][0]['components']
     config_keys = [i['name'] for i in config_outputs if 'name' in i]
     config = dict(zip(config_keys, config_values))
+    if deployment_block is not None:
+        config['deploymentBlock'] = deployment_block
+    if extra_data is not None:
+        config['extraData'] = extra_data
     if debug:
         print(f"POOL {pool_contract.address[:8]} ({name}) CONFIG:")
         for k,i in config.items():
             print(f" {k:<31} = {i}")
+
+    # get pool info
     info_values = pool_contract.functions.getPoolInfo().call(block_identifier=block_identifier)
     info_outputs = pool_contract.functions.getPoolInfo().abi['outputs'][0]['components']
     info_keys = [i['name'] for i in info_outputs if 'name' in i]
@@ -148,9 +227,10 @@ def get_pool_details(pool_contract, debug: bool = False, block_number: int | Non
     if config["baseToken"] == "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE":
         # the base token is ETH
         base_token_balance = w3.eth.get_balance(pool_contract.address)
-    else:
-        base_token_contract = w3.eth.contract(address=config["baseToken"], abi=ERC20_ABI)
+    elif config["baseToken"] != "0x0000000000000000000000000000000000000000":
+        base_token_contract = w3.eth.contract(address=config["extraData"], abi=ERC20_ABI)
         base_token_balance = base_token_contract.functions.balanceOf(pool_contract.address).call(block_identifier=block_identifier)
+        print(f"{base_token_balance=}")
     vault_shares_balance = vault_contract_address = vault_contract = vault_shares_contract = None
     if "Morpho" in name:
         vault_contract_address = pool_contract.functions.vault().call(block_identifier=block_identifier)
@@ -169,6 +249,8 @@ def get_pool_details(pool_contract, debug: bool = False, block_number: int | Non
     elif config["vaultSharesToken"] != "0x0000000000000000000000000000000000000000":
         vault_shares_contract = w3.eth.contract(address=config["vaultSharesToken"], abi=ERC20_ABI)
         vault_shares_balance = vault_shares_contract.functions.balanceOf(pool_contract.address).call(block_identifier=block_identifier)
+    else:  # shares token is null, so we use the base token in its place
+        vault_shares_balance = base_token_balance
     short_rewardable_tvl = info['shortsOutstanding']
     lp_rewardable_tvl = vault_shares_balance - short_rewardable_tvl
     if debug:
@@ -182,6 +264,48 @@ def get_pool_details(pool_contract, debug: bool = False, block_number: int | Non
         print(f" {'short_rewardable_tvl':<31} = {short_rewardable_tvl}")
 
     return config, info, name, vault_shares_balance, lp_rewardable_tvl, short_rewardable_tvl
+
+def calculate_spot_price(effective_share_reserves, bond_reserves, initial_vault_share_price, time_stretch):
+    """Calculate spot price form effective share reserves and bond reserves.
+
+    Formula is derived as follows:
+        p = (y / (mu * (z - zeta))) ** -t_s
+        = ((mu * (z - zeta)) / y) ** t_s
+        since z_effective = z - zeta
+        p = (mu * z_effective / y) ** t_s
+    """
+    ratio = (initial_vault_share_price * effective_share_reserves) / bond_reserves
+    return pow(ratio, time_stretch)
+
+def calculate_apr_from_price(price, duration):
+    """Calculate APR from price and duration.
+
+    Formula is:
+        r = (1 - p) / (p * t)
+    """
+    # Convert duration from seconds to years (365 days)
+    t = duration / (365 * 24 * 60 * 60)
+    return (1 - price) / (price * t)
+
+def calc_apr(config, info):
+    """Calculate the spot APR of the pool.
+
+    Args:
+        config: Pool configuration
+        info: Pool information
+
+    Returns:
+        float: The pool's spot APR
+    """
+    effective_share_reserves = info['shareReserves'] - info['shareAdjustment']
+    spot_price = calculate_spot_price(
+        effective_share_reserves=effective_share_reserves,
+        bond_reserves=info['bondReserves'],
+        initial_vault_share_price=config['initialVaultSharePrice']/1e18,
+        time_stretch=config['timeStretch']/1e18
+    )
+
+    return calculate_apr_from_price(spot_price, config['positionDuration'])
 
 def get_pool_positions(pool_contract, pool_users, pool_ids, lp_rewardable_tvl, short_rewardable_tvl, block = None):
     pool_positions = []
@@ -226,18 +350,30 @@ def get_trade_details(asset_id: int) -> tuple[str, int, int]:
     trade_type = HyperdrivePrefix(prefix).name
     return trade_type, prefix, timestamp
 
-def get_tvl() -> str:
-    hyperdrive_registry_contract = w3.eth.contract(address=w3.to_checksum_address(HYPERDRIVE_REGISTRY_ADDRESS), abi=HYPERDRIVE_REGISTRY_ABI)
+def get_tvl_for_pool(w3, pool) -> str:
+    pool_to_test_contract = w3.eth.contract(address=w3.to_checksum_address(pool), abi=HYPERDRIVE_MORPHO_ABI)
+    config, _, name, vault_shares_balance, _, _ = get_pool_details(w3, pool_to_test_contract)
+    token_contract_address = config['baseToken'] if config['vaultSharesToken'] == "0x0000000000000000000000000000000000000000" else config['vaultSharesToken']
+    token_contract = w3.eth.contract(address=w3.to_checksum_address(token_contract_address), abi=ERC20_ABI)
+    tvl_string = f"{name:<58}({pool[:8]}) {vault_shares_balance:>32} {token_contract.functions.symbol().call():>5}"
+    return tvl_string
+
+def get_tvl_for_network(w3, network) -> str:
+    hyperdrive_registry_contract = w3.eth.contract(address=w3.to_checksum_address(HYPERDRIVE_REGISTRY[network]), abi=HYPERDRIVE_REGISTRY_ABI)
     number_of_instances = hyperdrive_registry_contract.functions.getNumberOfInstances().call()
     instance_list = hyperdrive_registry_contract.functions.getInstancesInRange(0,number_of_instances).call()
 
     tvl_string = ''
-    for pool_to_test in instance_list:
-        pool_to_test_contract = w3.eth.contract(address=w3.to_checksum_address(pool_to_test), abi=HYPERDRIVE_MORPHO_ABI)
-        config, _, name, vault_shares_balance, _, _ = get_pool_details(pool_to_test_contract)
-        token_contract_address = config['baseToken'] if config['vaultSharesToken'] == "0x0000000000000000000000000000000000000000" else config['vaultSharesToken']
-        token_contract = w3.eth.contract(address=w3.to_checksum_address(token_contract_address), abi=ERC20_ABI)
-        tvl_string_line = f"{name:<58}({pool_to_test[:8]}) {vault_shares_balance:>32} {token_contract.functions.symbol().call():>5}"
-        tvl_string += f"{tvl_string_line}\n"
+    for pool in instance_list:
+        tvl_string += get_tvl_for_pool(w3, pool)
 
     return tvl_string
+
+def get_instance_list(network, debug=False):
+    w3 = create_w3(network)
+    registry_address = HYPERDRIVE_REGISTRY[network]
+    hyperdrive_registry_contract = w3.eth.contract(address=w3.to_checksum_address(registry_address), abi=HYPERDRIVE_REGISTRY_ABI)
+    number_of_instances = hyperdrive_registry_contract.functions.getNumberOfInstances().call()
+    if debug:
+        print(f"retrieved {number_of_instances} pools on {network}")
+    return w3, hyperdrive_registry_contract.functions.getInstancesInRange(0,number_of_instances).call()
