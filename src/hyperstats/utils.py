@@ -88,7 +88,7 @@ def get_hyperdrive_participants(w3, pool, cache: bool = False, debug: bool = Fal
             return all_users, all_ids
     else:
         deployment_block, extra_data = get_first_contract_block(w3, pool)
-        start_block = deployment_block + 1
+        start_block = deployment_block
     assert all_users is not None, "error: all_users is None"
     assert all_ids is not None, "error: all_ids is None"
     assert start_block is not None, "error: start_block is None"
@@ -338,7 +338,7 @@ def get_pool_positions(pool_contract, pool_users, pool_ids, lp_rewardable_tvl, s
     for prefixes in combined_prefixes:
         combined_shares = sum(position[5] for position in pool_positions if position[2] in prefixes)
         combined_rewardable = lp_rewardable_tvl if prefixes[0] == 0 else short_rewardable_tvl
-        if combined_shares != combined_rewardable:
+        if combined_shares != combined_rewardable and len(pool_positions) > 0:
             diff = combined_rewardable - combined_shares
             # Find the position with the largest share among the combined prefixes
             max_position = max((p for p in pool_positions if p[2] in prefixes), key=lambda x: x[5])
