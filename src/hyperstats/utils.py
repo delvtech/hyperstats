@@ -24,6 +24,8 @@ from hyperstats.web3_utils import (
 
 getcontext().prec = 100  # Set precision for Decimal calculations
 
+# pylint: disable=bare-except
+
 def get_first_contract_block(w3, contract_address):
     """Find the first block where a contract's code exists.
 
@@ -62,7 +64,24 @@ def get_first_contract_block(w3, contract_address):
     deployment_block = first_code_block
 
     # Now find the deployment transaction
-    _, extra_data = get_deployment_transaction(w3, contract_address, deployment_block=deployment_block)
+    _, _, receipt = get_deployment_transaction(w3, contract_address, deployment_block=deployment_block)
+
+    # Decode the constructor args
+    extra_data = None
+    if receipt is not None:
+        try:
+            logs = receipt.get('logs', [])
+            for log in logs:
+                topic = log.get('topics', [None])[0]
+                if topic == HexBytes('0xb25b0f0f93209be08152122f1321f6b0ef559a93a67695fff5fea3e5ed234465'):
+                    decoded_event = w3.eth.contract(abi=HYPERDRIVE_FACTORY_ABI).events.Deployed().process_log(log)
+                    extra_data = decoded_event['args']['extraData']
+                    extra_data_decoded = HexBytes(extra_data)
+                    if extra_data_decoded[:12] == HexBytes('0x000000000000000000000000'):
+                        extra_data_decoded = HexBytes(extra_data_decoded[12:])
+                    return deployment_block, extra_data_decoded
+        except:
+            pass
 
     return deployment_block, extra_data
 
@@ -132,31 +151,33 @@ def get_deployment_transaction(w3, contract_address, deployment_block=None):
         deployment_block: Optional block number where contract was deployed
         
     Returns:
-        tuple: (transaction_hash, constructor_args)
+        tuple: (transaction_hash, input_data, receipt)
             - transaction_hash: The hash of the deployment transaction
-            - constructor_args: The decoded constructor arguments if available
+            - input_data: The contract creation input data (includes constructor args)
+            - receipt: The transaction receipt
     """
-    # First find the block where the contract was deployed
+    # First find the block where the contract was deployed if not provided
     if deployment_block is None:
         deployment_block = get_first_contract_block(w3, contract_address)
     
     block = w3.eth.get_block(deployment_block, full_transactions=True)
     contract_address = contract_address.lower()
     
-    # Look for the transaction that created the contract
+    # Look through all transactions in the block
     for tx in block.transactions:
         try:
             receipt = w3.eth.get_transaction_receipt(tx.hash)
-            # Find deployed event in the logs
+
+            # Check direct contract creation
+            if tx.get('to') is None and receipt.get('contractAddress', '').lower() == contract_address:
+                return tx.hash, tx.input, receipt
+
+            # Check logs for factory deployment events
             for log in receipt.get('logs', []):
-                topic = log.get('topics', [None])[0]
-                if topic == HexBytes('0xb25b0f0f93209be08152122f1321f6b0ef559a93a67695fff5fea3e5ed234465'):
-                    decoded_event = w3.eth.contract(abi=HYPERDRIVE_FACTORY_ABI).events.Deployed().process_log(log)
-                    extra_data = decoded_event['args']['extraData']
-                    extra_data_decoded = HexBytes(extra_data)
-                    if extra_data_decoded[:12] == HexBytes('0x000000000000000000000000'):
-                        extra_data_decoded = HexBytes(extra_data_decoded[12:])
-                    return tx.hash, extra_data_decoded
+                # Common factory deployment event topics
+                if (log.get('address', '').lower() == contract_address or
+                    any(topic.lower() == contract_address.lower() for topic in log.get('topics', []))):
+                    return tx.hash, tx.input, receipt
                     
         except Exception as e:
             print(f"Error processing transaction {tx.hash}: {e}")
@@ -228,9 +249,11 @@ def get_pool_details(w3, pool_contract, deployment_block: int | None = None, ext
         # the base token is ETH
         base_token_balance = w3.eth.get_balance(pool_contract.address)
     elif " LP " in name:
+        # the base token is an LP token
         base_token_contract = w3.eth.contract(address=config["extraData"], abi=ERC20_ABI)
         base_token_balance = base_token_contract.functions.balanceOf(pool_contract.address).call(block_identifier=block_identifier)
     elif config["baseToken"] != "0x0000000000000000000000000000000000000000":
+        # regular base token
         base_token_contract = w3.eth.contract(address=config["baseToken"], abi=ERC20_ABI)
         base_token_balance = base_token_contract.functions.balanceOf(pool_contract.address).call(block_identifier=block_identifier)
     if "Morpho" in name:
