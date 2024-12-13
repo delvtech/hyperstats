@@ -174,9 +174,19 @@ def get_deployment_transaction(w3, contract_address, deployment_block=None):
 
             # Check logs for factory deployment events
             for log in receipt.get('logs', []):
-                # Common factory deployment event topics
+                # Check if the contract address appears in any of:
+                # 1. The log's address (contract that emitted the event)
+                # 2. The topics (indexed event parameters, exact match)
+                # 3. The last 20 bytes of any topic (for packed addresses)
+                address_bytes = bytes.fromhex(contract_address[2:])  # Remove '0x' and convert to bytes
                 if (log.get('address', '').lower() == contract_address or
-                    any(topic.lower() == contract_address.lower() for topic in log.get('topics', []))):
+                    any(
+                        # Check exact match
+                        topic.hex().lower() == contract_address[2:].lower() or
+                        # Check last 20 bytes
+                        len(topic) >= 20 and topic[-20:] == address_bytes
+                        for topic in log.get('topics', [])
+                    )):
                     return tx.hash, tx.input, receipt
                     
         except Exception as e:
