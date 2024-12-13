@@ -6,6 +6,7 @@ import traceback
 from web3 import Web3
 from web3.middleware import ExtraDataToPOAMiddleware
 
+# pylint: disable=redefined-builtin
 
 def create_w3(network):
     w3 = Web3(Web3.HTTPProvider(f"https://{'eth' if network == 'mainnet' else network}-mainnet.g.alchemy.com/v2/{os.getenv('ALCHEMY_KEY')}"))
