@@ -15,12 +15,12 @@ def create_w3(network):
 
 
 def fetch_events_logs_with_retry(
-    label: str,
     contract_event,
     from_block: int,
     to_block: int | str = "latest",
     retries: int = 3,
     delay: int = 2,
+    label: str | None = None,
     filter: dict | None = None,
 ) -> dict | None:
     for attempt in range(retries):
@@ -34,6 +34,10 @@ def fetch_events_logs_with_retry(
                 time.sleep(delay)
                 continue
             else:
-                msg = f"Error getting events logs for {label}: {e}, {traceback.format_exc()}"
+                msg = (
+                    f"Error getting events logs"
+                    f" for {label}" if label is not None else ""
+                    f": {e}, {traceback.format_exc()}"
+                )
                 logging.error(msg)
                 raise e

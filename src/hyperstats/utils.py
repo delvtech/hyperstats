@@ -119,11 +119,11 @@ def get_hyperdrive_participants(w3, pool, cache: bool = False, debug: bool = Fal
     while current_block < target_block:
         to_block = min(current_block + PAGE_SIZE, target_block)
         transfers = fetch_events_logs_with_retry(
-            label=f"Hyperdrive users {pool}",
             contract_event=contract.events.TransferSingle(),
             from_block=current_block,
             to_block=to_block,
             delay=0,
+            label=f"Hyperdrive users {pool}",
         )
         assert transfers is not None, "error: transfers is None"
         for transfer in transfers:
@@ -158,7 +158,7 @@ def get_deployment_transaction(w3, contract_address, deployment_block=None):
     """
     # First find the block where the contract was deployed if not provided
     if deployment_block is None:
-        deployment_block = get_first_contract_block(w3, contract_address)
+        deployment_block, _ = get_first_contract_block(w3, contract_address)
     
     block = w3.eth.get_block(deployment_block, full_transactions=True)
     contract_address = contract_address.lower()
