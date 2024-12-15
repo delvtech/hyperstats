@@ -1,27 +1,15 @@
 # %%
 import sys
+from datetime import datetime
 
-from dotenv import load_dotenv
+import requests
+from lxml import html
 
-from hyperstats.constants import (
-    ERC20_ABI,
-    SAFE_ABI,
-    ZERO_ADDRESS,
-)
+from hyperstats.constants import ERC20_ABI, SAFE_ABI, ZERO_ADDRESS
 from hyperstats.utils import get_first_contract_block
-from hyperstats.web3_utils import (
-    create_w3,
-    fetch_events_logs_with_retry,
-)
+from hyperstats.web3_utils import create_w3, fetch_events_logs_with_retry
 
 # pylint: disable=bare-except
-
-load_dotenv()
-
-# define contracts we want to query
-contracts = {
-    "base": "0xbd0f196071de8d7d1521c0ee53584875d2d97fc5",
-}
 
 # %%
 def format_balance(balance: int, decimals: int) -> str:
@@ -92,6 +80,13 @@ def get_transfer_logs(w3, contract_address):
         contract_event=contract_of_interest.events.Transfer(),
         from_block=deploy_block,
     )
+
+    # Print latest block and date
+    latest_block = w3.eth.get_block(transfer_logs[-1].blockNumber)
+    formatted_timestamp = datetime.fromtimestamp(latest_block.timestamp).strftime('%Y-%m-%d %H:%M:%S')
+
+    print(f"Latest block: {latest_block.number} ({formatted_timestamp})")
+
     assert transfer_logs is not None, "error: transfer_logs is None"
     print(f"Found {len(transfer_logs)} Transfer events")
 
@@ -130,28 +125,69 @@ def get_holder_stats(transfer_logs, contract_of_interest):
 
     return holders, total_supply, decimals
 
-def print_holders(w3, holders, total_supply, decimals):
-    print("\nRank\tAddress\t\t\t\t\t\t\tQuantity\t\tPercentage")
+def get_ens_name(w3, address):
+    """Try to resolve ENS name for an address."""
+    try:
+        name = w3.ens.name(address)
+        if name:
+            return " " + ','.join(name) if isinstance(name, list) else name
+    except Exception:
+        pass
+    return ""
+
+def get_etherscan_tag(address):
+    """Get contract/address label from Etherscan by scraping the webpage."""
+    try:
+        url = f"https://etherscan.io/address/{address}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            tree = html.fromstring(response.content)
+            # Try to get the tag using the XPath
+            tag_elements = tree.xpath('/html/body/main/section[3]/div[1]/div[1]/a/div/span')
+            if tag_elements:
+                tag = tag_elements[0].text_content().strip()
+                return tag
+    except Exception:
+        pass
+    return ""
+
+def print_holders(w3, holders, total_supply, decimals, show_all_safe_owners=False):
+    print("\nRank\tAddress\t\t\t\t\t\tQuantity\t\tPercentage\tOwner (ENS or [Etherscan tag])")
     for i, (addr, balance) in enumerate(holders, 1):
         formatted_balance = format_balance(balance, decimals)
         percentage = (balance / total_supply) * 100 if total_supply > 0 else 0
 
         # Check if address is a Safe
         is_safe_wallet, version, owners, threshold = check_safe(w3, addr, debug=False)
-        safe_label = " (Safe)" if is_safe_wallet else "       "
 
-        print(f"{i}\t{addr}{safe_label}\t{formatted_balance}\t{percentage:.4f}%")
+        # Get ENS name and Etherscan tag if available
+        labels = get_ens_name(w3, addr)
+        etherscan_tag = get_etherscan_tag(addr)
+        labels += " " if labels else "" + f"[{etherscan_tag}]" if etherscan_tag else ""
+        print(f"{i}\t{addr}\t{formatted_balance}\t{percentage:.4f}%\t\t{labels}", end="" if is_safe_wallet else "\n")
 
         # If it's a Safe, get its info
         if is_safe_wallet:
-            print(f"- {threshold}/{len(owners)} Safe (version {version})")
-            if owners:
-                print("- Owners:")
-                for owner in owners:
-                    print(f"  - {owner}")
+            if not show_all_safe_owners:
+                first_owner = owners[0]
+                tag_label = get_ens_name(w3, first_owner)
+                owner_tag = get_etherscan_tag(first_owner)
+                tag_label += f" [{owner_tag}]" if owner_tag else ""
+                print(f"Safe owner: {first_owner}{tag_label}")
+            else:
+                print(f"\n- {threshold}/{len(owners)} Safe (version {version})")
+                if owners:
+                    print("- Owners:")
+                    for owner in owners:
+                        tag_label = get_ens_name(w3, owner)
+                        owner_tag = get_etherscan_tag(owner)
+                        tag_label += f" [{owner_tag}]" if owner_tag else ""
+                        print(f"  - {owner}{f' {tag_label}' if tag_label else ''}")
 
 def query(contract_network, contract_address):
-    # create network
     w3 = create_w3(contract_network)
     print(contract_network, contract_address)
 
