@@ -99,14 +99,20 @@ def get_hyperdrive_participants(w3, pool, cache: bool = False, debug: bool = Fal
     else:
         all_ids = set()
     deployment_block = extra_data = None
+    if cache and os.path.exists(f"cache/hyperdrive_deployment_block_{pool}.json") and os.path.exists(f"cache/hyperdrive_extra_data_{pool}.json"):
+        with open(f"cache/hyperdrive_deployment_block_{pool}.json", "r", encoding="utf-8") as f:
+            deployment_block = json.load(f)
+        with open(f"cache/hyperdrive_extra_data_{pool}.json", "r", encoding="utf-8") as f:
+            extra_data = json.load(f)
+    else:
+        deployment_block, extra_data = get_first_contract_block(w3, pool)
     if cache and os.path.exists(f"cache/hyperdrive_latest_block_{pool}.json"):
         with open(f"cache/hyperdrive_latest_block_{pool}.json", "r", encoding="utf-8") as f:
             start_block = json.load(f) + 1
         if start_block >= target_block:
             print(f"Skipping pool {pool} because it's up to date.")
-            return all_users, all_ids
+            return all_users, all_ids, deployment_block, extra_data
     else:
-        deployment_block, extra_data = get_first_contract_block(w3, pool)
         start_block = deployment_block
     assert all_users is not None, "error: all_users is None"
     assert all_ids is not None, "error: all_ids is None"
@@ -139,6 +145,10 @@ def get_hyperdrive_participants(w3, pool, cache: bool = False, debug: bool = Fal
             json.dump(list(all_ids), f)
         with open(f"cache/hyperdrive_latest_block_{pool}.json", "w", encoding="utf-8") as f:
             json.dump(target_block, f)
+        with open(f"cache/hyperdrive_deployment_block_{pool}.json", "w", encoding="utf-8") as f:
+            json.dump(deployment_block, f)
+        with open(f"cache/hyperdrive_extra_data_{pool}.json", "w", encoding="utf-8") as f:
+            json.dump(extra_data, f)
 
     return all_users, all_ids, deployment_block, extra_data
 

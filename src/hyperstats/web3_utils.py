@@ -1,8 +1,8 @@
 import logging
 import os
+import re
 import time
 import traceback
-import re
 
 from web3 import Web3
 from web3.middleware import ExtraDataToPOAMiddleware
