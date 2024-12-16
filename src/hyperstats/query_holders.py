@@ -7,7 +7,7 @@ from lxml import html
 
 from hyperstats.constants import ERC20_ABI, SAFE_ABI, ZERO_ADDRESS
 from hyperstats.utils import get_first_contract_block
-from hyperstats.web3_utils import create_w3, fetch_events_logs_with_retry
+from hyperstats.web3_utils import create_w3, fetch_events_logs_with_retry, get_bns_name
 
 # pylint: disable=bare-except
 
@@ -125,15 +125,9 @@ def get_holder_stats(transfer_logs, contract_of_interest):
 
     return holders, total_supply, decimals
 
-def get_ens_name(w3, address):
-    """Try to resolve ENS name for an address."""
-    try:
-        name = w3.ens.name(address)
-        if name:
-            return " " + ','.join(name) if isinstance(name, list) else name
-    except Exception:
-        pass
-    return ""
+def get_name(w3, address):
+    """Get BNS name for an address."""
+    return get_bns_name(w3, address)
 
 def get_etherscan_tag(address):
     """Get contract/address label from Etherscan by scraping the webpage."""
@@ -164,7 +158,7 @@ def print_holders(w3, holders, total_supply, decimals, show_all_safe_owners=Fals
         is_safe_wallet, version, owners, threshold = check_safe(w3, addr, debug=False)
 
         # Get ENS name and Etherscan tag if available
-        labels = get_ens_name(w3, addr)
+        labels = get_name(w3, addr)
         etherscan_tag = get_etherscan_tag(addr)
         labels += " " if labels else "" + f"[{etherscan_tag}]" if etherscan_tag else ""
         print(f"{i}\t{addr}\t{formatted_balance}\t{percentage:.4f}%\t\t{labels}", end="" if is_safe_wallet else "\n")
@@ -173,7 +167,7 @@ def print_holders(w3, holders, total_supply, decimals, show_all_safe_owners=Fals
         if is_safe_wallet:
             if not show_all_safe_owners:
                 first_owner = owners[0]
-                tag_label = get_ens_name(w3, first_owner)
+                tag_label = get_name(w3, first_owner)
                 owner_tag = get_etherscan_tag(first_owner)
                 tag_label += f" [{owner_tag}]" if owner_tag else ""
                 print(f"Safe owner: {first_owner}{tag_label}")
@@ -182,7 +176,7 @@ def print_holders(w3, holders, total_supply, decimals, show_all_safe_owners=Fals
                 if owners:
                     print("- Owners:")
                     for owner in owners:
-                        tag_label = get_ens_name(w3, owner)
+                        tag_label = get_name(w3, owner)
                         owner_tag = get_etherscan_tag(owner)
                         tag_label += f" [{owner_tag}]" if owner_tag else ""
                         print(f"  - {owner}{f' {tag_label}' if tag_label else ''}")
@@ -197,6 +191,16 @@ def query(contract_network, contract_address):
 
     print_holders(w3, holders, total_supply, decimals)
 
+# %% testing
+# if __name__ == "__main__":
+#     network = "base"
+#     address = "0x4426023bbeaC104ea9f6f816c979f4E39C174957"
+#     print(f"{address=}")
+#     w3 = create_w3(network)
+#     provider_url = w3.provider.endpoint_uri.lower()
+#     print(f"{provider_url=}")
+#     name = get_name(w3, address)
+#     print(f"{name=}")
 
 # %%
 if __name__ == "__main__":
