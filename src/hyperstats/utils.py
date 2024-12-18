@@ -99,14 +99,20 @@ def get_hyperdrive_participants(w3, pool, cache: bool = False, debug: bool = Fal
     else:
         all_ids = set()
     deployment_block = extra_data = None
+    if cache and os.path.exists(f"cache/hyperdrive_deployment_block_{pool}.json") and os.path.exists(f"cache/hyperdrive_extra_data_{pool}.json"):
+        with open(f"cache/hyperdrive_deployment_block_{pool}.json", "r", encoding="utf-8") as f:
+            deployment_block = json.load(f)
+        with open(f"cache/hyperdrive_extra_data_{pool}.json", "r", encoding="utf-8") as f:
+            extra_data = json.load(f)
+    else:
+        deployment_block, extra_data = get_first_contract_block(w3, pool)
     if cache and os.path.exists(f"cache/hyperdrive_latest_block_{pool}.json"):
         with open(f"cache/hyperdrive_latest_block_{pool}.json", "r", encoding="utf-8") as f:
             start_block = json.load(f) + 1
         if start_block >= target_block:
             print(f"Skipping pool {pool} because it's up to date.")
-            return all_users, all_ids
+            return all_users, all_ids, deployment_block, extra_data
     else:
-        deployment_block, extra_data = get_first_contract_block(w3, pool)
         start_block = deployment_block
     assert all_users is not None, "error: all_users is None"
     assert all_ids is not None, "error: all_ids is None"
@@ -139,6 +145,10 @@ def get_hyperdrive_participants(w3, pool, cache: bool = False, debug: bool = Fal
             json.dump(list(all_ids), f)
         with open(f"cache/hyperdrive_latest_block_{pool}.json", "w", encoding="utf-8") as f:
             json.dump(target_block, f)
+        with open(f"cache/hyperdrive_deployment_block_{pool}.json", "w", encoding="utf-8") as f:
+            json.dump(deployment_block, f)
+        with open(f"cache/hyperdrive_extra_data_{pool}.json", "w", encoding="utf-8") as f:
+            json.dump(extra_data, f)
 
     return all_users, all_ids, deployment_block, extra_data
 
@@ -174,9 +184,19 @@ def get_deployment_transaction(w3, contract_address, deployment_block=None):
 
             # Check logs for factory deployment events
             for log in receipt.get('logs', []):
-                # Common factory deployment event topics
+                # Check if the contract address appears in any of:
+                # 1. The log's address (contract that emitted the event)
+                # 2. The topics (indexed event parameters, exact match)
+                # 3. The last 20 bytes of any topic (for packed addresses)
+                address_bytes = bytes.fromhex(contract_address[2:])  # Remove '0x' and convert to bytes
                 if (log.get('address', '').lower() == contract_address or
-                    any(topic.lower() == contract_address.lower() for topic in log.get('topics', []))):
+                    any(
+                        # Check exact match
+                        topic.hex().lower() == contract_address[2:].lower() or
+                        # Check last 20 bytes
+                        len(topic) >= 20 and topic[-20:] == address_bytes
+                        for topic in log.get('topics', [])
+                    )):
                     return tx.hash, tx.input, receipt
                     
         except Exception as e:
