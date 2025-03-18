@@ -6,7 +6,7 @@ from hyperstats.constants import (
     HYPERDRIVE_MORPHO_ABI,
     HYPERDRIVE_REGISTRY,
 )
-from hyperstats.utils import calc_apr, get_instance_list, get_pool_details, get_hyperdrive_participants
+from hyperstats.utils import calc_apr, get_hyperdrive_participants, get_instance_list, get_pool_details
 
 # print headers
 print(f"{'network':<10} {'pool':<58} ({'address'}) {'balance':>32} {'token':>14} {'APR':>6} ")

@@ -27,7 +27,7 @@ def check_safe(w3, address, debug=False):
 
     if debug:
         print(f"\nChecking if {address} is a Safe:")
-    
+
     is_contract = check_contract(w3, address)
     if debug:
         print(f"Is {'not ' if not is_contract else ' '}a contract: {is_contract}")
@@ -104,7 +104,7 @@ def get_holder_stats(transfer_logs, contract_of_interest):
         # Subtract from sender
         if from_addr != ZERO_ADDRESS:
             balances[from_addr] = balances.get(from_addr, 0) - value
-            
+
         # Add to receiver
         if to_addr != ZERO_ADDRESS:
             balances[to_addr] = balances.get(to_addr, 0) + value
@@ -114,12 +114,11 @@ def get_holder_stats(transfer_logs, contract_of_interest):
 
     # Get token decimals
     decimals = contract_of_interest.functions.decimals().call()
-    
+
     print(f"\nTotal current holders: {len(current_holders)}")
-    
     # Calculate total supply for percentage
     total_supply = sum(current_holders.values())
-    
+
     # Sort holders by balance
     holders = sorted(current_holders.items(), key=lambda x: x[1], reverse=True)
 
@@ -216,28 +215,32 @@ def get_compound_label(w3, network, address, is_safe_wallet, is_contract, owners
     return labels
 
 def print_holders(w3, network, holders, total_supply, decimals, show_all_safe_owners=False):
-    print(f"{'Rank':<5}{'Address':<40}{'Quantity':>32}{'Percentage':>11} {'Owner':<20}")
-    for i, (addr, balance) in enumerate(holders, 1):
-        formatted_balance = format_balance(balance, decimals)
-        percentage = (balance / total_supply) if total_supply > 0 else 0
+    with open("holders.csv", "w", encoding="utf-8") as file:
+        print(f"{'Rank':<5}{'Address':<40}{'Quantity':>32}{'Percentage':>11} {'Owner':<20}")
+        file.write(f"{'Rank'},{'Address'},{'Quantity'},{'Percentage'}, {'Owner'}\n")
+        for i, (addr, balance) in enumerate(holders, 1):
+            formatted_balance = format_balance(balance, decimals)
+            percentage = (balance / total_supply) if total_supply > 0 else 0
 
-        # Check if address is a Safe
-        is_safe_wallet, version, owners, threshold, is_contract = check_safe(w3[network], addr, debug=False)
+            # Check if address is a Safe
+            is_safe_wallet, version, owners, threshold, is_contract = check_safe(w3[network], addr, debug=False)
 
-        # Label what we know about the address
-        labels = get_compound_label(w3, network, addr, is_safe_wallet, is_contract, owners)
-        print(f"{i:<5}{addr:<40}{formatted_balance:>30}{percentage:>11.4%} {labels:<20}")
+            # Label what we know about the address
+            labels = get_compound_label(w3, network, addr, is_safe_wallet, is_contract, owners)
+            print(f"{i:<5}{addr:<40}{formatted_balance:>30}{percentage:>11.4%} {labels:<20}")
+            # Write to CSV
+            file.write(f"{i},{addr},{formatted_balance},{percentage},{labels}\n")
 
-        # If it's a Safe, get its info
-        if is_safe_wallet and show_all_safe_owners:
-            print(f"\n- {threshold}/{len(owners)} Safe (version {version})")
-            if owners:
-                print("- Owners:")
-                for owner in owners:
-                    tag_label = get_name(w3, owner)
-                    owner_tag = get_etherscan_tag(owner)
-                    tag_label += f" [{owner_tag}]" if owner_tag else ""
-                    print(f"  - {owner}{f' {tag_label}' if tag_label else ''}")
+            # If it's a Safe, get its info
+            if is_safe_wallet and show_all_safe_owners:
+                print(f"\n- {threshold}/{len(owners)} Safe (version {version})")
+                if owners:
+                    print("- Owners:")
+                    for owner in owners:
+                        tag_label = get_name(w3, owner)
+                        owner_tag = get_etherscan_tag(owner)
+                        tag_label += f" [{owner_tag}]" if owner_tag else ""
+                        print(f"  - {owner}{f' {tag_label}' if tag_label else ''}")
 
 def query(w3, contract_network, contract_address):
     print(contract_network, contract_address)
